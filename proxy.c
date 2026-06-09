@@ -263,9 +263,10 @@ void th_handle_server_response(void){
 
     th_readline();
     http_status_line* status_line = response.status_line = http_parse_status_line(recv_buf.buf);
-    if(!status_line)
+    if(!status_line || status_line->version.major != 1)
         th_httperror_client(502, "Invalid status line");
-
+    
+    status_line->version.minor = 0;
     debug_tr("%s %d %s", PROXY_HTTP_VERSION, status_line->code, status_line->reason_phrase);
     th_writeline("%s %d %s", PROXY_HTTP_VERSION, status_line->code, status_line->reason_phrase);
 
