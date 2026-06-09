@@ -282,6 +282,18 @@ int http_str_date(time_t dt, char* buf, size_t maxlen){
     return len > 0 ? 0 : -1;
 }
 
+int http_reformat_date(const char* str, time_t* dt, char* buf, size_t maxlen){
+    time_t _dt;
+    if(!dt) dt = &_dt;
+
+    if(http_parse_date(str, dt) == -1) return -1;
+    if(http_str_date(*dt, buf, maxlen) == -1){
+        log_fail_errno(warn, http_str_date);
+        return -1;
+    }
+    return 0;
+}
+
 static size_t split(char* str, char** word_buf, size_t max_words){
     size_t words = 0;
     char* curr = str;

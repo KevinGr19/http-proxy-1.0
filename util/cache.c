@@ -20,6 +20,7 @@
 
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
+#define DEFAULT_EXPIRES_OFFSET 60*5
 
 #define HASHMAP_MIN_CAPACITY 17
 #define HASHMAP_LOAD_SHRINK 0.3
@@ -54,7 +55,7 @@ pthread_mutex_t rmutex;
 
 static int try_send_response(int fd, cache_key* key);
 static int store_response(cache_key* key, cache_response* response);
-static int update_response_headers(cache_key* key, header_list* headers);
+static int update_response_headers(cache_key* key, cache_response* response);
 
 static cache_entry* list_pop_lru(void);
 static void list_set_mru(cache_entry* entry);
@@ -104,9 +105,9 @@ int cache_store_response(cache_key* key, cache_response* response){
     return rc;
 }
 
-int cache_update_response_headers(cache_key* key, header_list* headers){
+int cache_update_response_headers(cache_key* key, cache_response* response){
     pthread_rwlock_wrlock(&rwlock);
-    int rc = update_response_headers(key, headers);
+    int rc = update_response_headers(key, response);
     pthread_rwlock_unlock(&rwlock);
     return rc;
 }
@@ -191,16 +192,28 @@ static int store_response(cache_key* key, cache_response* response){
     cache_size += response->content_length;
 
     debug_tr("Added cache entry (%s:%s %s)", key->hostname, key->port, key->uri);
+
+    if(!(entry->response.received_headers & HDR_EXPIRES)){
+        entry->response.expires = time(NULL) + DEFAULT_EXPIRES_OFFSET;
+        debug_tr("Setting default expires date to cache entry: expire in %zu seconds", DEFAULT_EXPIRES_OFFSET);
+    }
+
     debug_tr("Cache state: entries=%zu capacity=%zu cache_size=%zuB", map.size, map.capacity, cache_size);
     return 0;
 }
 
-static int update_response_headers(cache_key* key, header_list* headers){
+static int update_response_headers(cache_key* key, cache_response* response){
     cache_entry* entry = hashmap_get_entry(key);
     if(!entry) return ECACHE_NOENTRY;
 
-    int rc = header_list_update(entry->response.headers, headers);
-    return rc == -1 ? ECACHE_ERRNO : 0;
+    int rc = header_list_update(entry->response.headers, response->headers);
+    if(rc == -1) return ECACHE_ERRNO;
+
+    list_set_mru(entry);
+    if((response->received_headers & HDR_EXPIRES))
+        entry->response.expires = response->expires;
+
+    return 0;
 }
 
 static cache_entry* list_pop_lru(void){

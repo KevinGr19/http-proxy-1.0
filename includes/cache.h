@@ -14,6 +14,7 @@ typedef struct{
     header_list* headers;
     void* body;
     size_t content_length;
+    headers_t received_headers;
     time_t expires;
 } cache_response;
 
@@ -26,4 +27,4 @@ typedef struct{
 void cache_init(void);
 int cache_try_send_response(int fd, cache_key* key);
 int cache_store_response(cache_key* key, cache_response* response);
-int cache_update_response_headers(cache_key* key, header_list* headers);
+int cache_update_response_headers(cache_key* key, cache_response* response);

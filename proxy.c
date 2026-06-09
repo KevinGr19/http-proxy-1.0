@@ -17,9 +17,10 @@
 #endif
 
 #define PROXY_HTTP_VERSION HTTP_VERSION(1,0)
-#define DEFAULT_EXPIRES_OFFSET 60*5
 
 static const char *user_agent_hdr = "Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3";
+
+typedef char date_buf[64];
 
 typedef struct{
     http_request_line* req_line;
@@ -331,24 +332,21 @@ void th_handle_server_response(void){
 
 void th_handle_client_header(http_header header, char* value){
     switch(header){
-        case HDR_DATE:
-            time_t dt;
-            char date[64];
-            if(http_parse_date(value, &dt) == -1) return;
-            if(http_str_date(dt, date, sizeof(date)) == -1){
-                log_fail_errno(warn, http_str_date);
-                return;
-            }
+        case HDR_DATE:{
+            date_buf date;
+            if(http_reformat_date(value, NULL, date, sizeof(date)) == -1) return;
             th_writeheader(request.headers, header, "%s", date);
             break;
+        }
 
-        case HDR_CONTENT_LENGTH:
+        case HDR_CONTENT_LENGTH:{
             char* endptr;
             size_t content_length = strtoull(value, &endptr, 10);
             if(*endptr != '\0') return;
 
             request.content_length = content_length;
             break;
+        }
 
         case HDR_PRAGMA:
             th_writeheader(request.headers, header, "%s", value);
@@ -371,24 +369,28 @@ void th_handle_client_header(http_header header, char* value){
 
 void th_handle_server_header(http_header header, char* value){
     switch(header){
-        case HDR_DATE:
-            time_t dt;
-            char date[64];
-            if(http_parse_date(value, &dt) == -1) return;
-            if(http_str_date(dt, date, sizeof(date)) == -1){
-                log_fail_errno(warn, http_str_date);
-                return;
-            }
-            th_writeheader(response.headers, header, "%s", value);
+        case HDR_DATE:{
+            date_buf date;
+            if(http_reformat_date(value, NULL, date, sizeof(date)) == -1) return;
+            th_writeheader(response.headers, header, "%s", date);
             break;
+        }
 
-        case HDR_CONTENT_LENGTH:
+        case HDR_EXPIRES:{
+            date_buf date;
+            if(http_reformat_date(value, &response.expires, date, sizeof(date)) == -1) return;
+            th_writeheader(response.headers, header, "%s", date);
+            break;
+        }
+
+        case HDR_CONTENT_LENGTH:{
             char* endptr;
             size_t content_length = strtoull(value, &endptr, 10);
             if(*endptr != '\0') return;
 
             response.content_length = content_length;
             break;
+        }
 
         case HDR_PRAGMA:
             th_writeheader(response.headers, header, "%s", value);
@@ -479,10 +481,32 @@ void th_try_cache_response(void){
         .port = request.req_line->port,
         .uri = request.req_line->uri,
     };
-    
-    // Not modified: update headers
-    if(response.status_line->code == 304){
-        int rc = cache_update_response_headers(&key, response.headers);
+
+    cache_response cache_res = {
+        .status_line = response.status_line,
+        .headers = response.headers,
+        .body = response.body,
+        .content_length = response.content_length,
+        .received_headers = response.received_headers,
+        .expires = response.expires,
+    };
+
+    if(response.status_line->code == 200){
+        int rc = cache_store_response(&key, &cache_res);
+        if(rc == 0){
+            debug("Successfully stored response from (%s:%s %s)", key.hostname, key.port, key.uri);
+            response.status_line = NULL;
+            response.headers = NULL;
+            response.body = NULL;
+            return;
+        }
+        if(rc == ECACHE_ERRNO){
+            log_fail_errno(error, cache_store_response);
+            th_exit();
+        }
+    }
+    else if(response.status_line->code == 304){
+        int rc = cache_update_response_headers(&key, &cache_res);
         if(rc == 0){
             debug("Successfully updated cached response headers (%s:%s %s)", key.hostname, key.port, key.uri);
             response.headers = NULL;
@@ -492,31 +516,6 @@ void th_try_cache_response(void){
             log_fail_errno(error, cache_update_response_headers);
             th_exit();
         }
-    }
-    else if(response.status_line->code != 200) return;
-    
-    time_t expires;
-    if((response.received_headers & HDR_EXPIRES)) expires = response.expires;
-    else expires = time(NULL) + DEFAULT_EXPIRES_OFFSET; 
-
-    cache_response cache_res = {
-        .status_line = response.status_line,
-        .headers = response.headers,
-        .expires = expires,
-        .content_length = response.content_length,
-        .body = response.body,
-    };
-    int rc = cache_store_response(&key, &cache_res);
-    if(rc == 0){
-        debug("Successfully stored response from (%s:%s %s)", key.hostname, key.port, key.uri);
-        response.status_line = NULL;
-        response.headers = NULL;
-        response.body = NULL;
-        return;
-    }
-    if(rc == ECACHE_ERRNO){
-        log_fail_errno(error, cache_store_response);
-        th_exit();
     }
 }
 

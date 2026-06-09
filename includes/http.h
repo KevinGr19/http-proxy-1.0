@@ -83,6 +83,7 @@ int http_search_header_param(const char* header_value, const char* param);
 
 int http_parse_date(const char* str, time_t* out);
 int http_str_date(time_t dt, char* buf, size_t maxlen);
+int http_reformat_date(const char* str, time_t* dt, char* buf, size_t maxlen);
 
 #ifndef _PROXY_HTTP_KEEP_XMACRO
 #undef LIST_OF_METHODS
