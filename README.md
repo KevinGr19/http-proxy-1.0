@@ -1,6 +1,20 @@
 # http-proxy-1.0
-Basic `HTTP/1.0` proxy, compliant with RFC 1945.  
+Basic `HTTP/1.0` proxy for Linux, compliant with RFC 1945.  
 Self-study assignment from the book "Computer Science: A Programmer's Perspective, 3rd edition" (`proxylab`).  
+
+## Prerequisites
+To build this project, you need the `gcc` compiler and the `make` utility.
+
+## Usage
+To run the proxy, build the executables with `make`, and run the proxy, specifying the port to listen on :
+```
+cd <path_to_dir>
+make
+./proxy <port>
+```
+
+> [!NOTE]
+> The proxy needs to run on a Linux machine. Clients connecting to the proxy can run on any OS.
 
 ## Features
 * Multi-threaded *(no thread pool)*
