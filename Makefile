@@ -1,9 +1,3 @@
-# Makefile for Proxy Lab 
-#
-# You may modify this file any way you like (except for the handin
-# rule). You instructor will type "make" on your specific Makefile to
-# build your proxy from sources.
-
 CC = gcc
 CFLAGS = -std=c99 -O1 -Wall -Iincludes
 LDFLAGS = -lpthread
