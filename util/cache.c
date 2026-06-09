@@ -219,7 +219,7 @@ static int update_response_headers(cache_key* key, cache_response* response){
 static cache_entry* list_pop_lru(void){
     if(!lru_entry) return NULL;
     cache_entry* entry = lru_entry;
-    lru_entry = entry->next;
+    list_remove(lru_entry);
     return entry;
 }
 
@@ -233,6 +233,7 @@ static void list_set_mru(cache_entry* entry){
     }
     else{
         entry->prev = mru_entry;
+        mru_entry->next = entry;
         mru_entry = entry;
     }
 }
@@ -242,6 +243,7 @@ static void list_remove(cache_entry* entry){
     if(entry->next) entry->next->prev = entry->prev;
     if(entry == lru_entry) lru_entry = entry->next;
     if(entry == mru_entry) mru_entry = entry->prev;
+    entry->prev = entry->next = NULL;
 }
 
 static void free_entry(cache_entry* entry){
