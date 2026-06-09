@@ -322,7 +322,7 @@ void th_handle_server_response(void){
         th_writeheader(response.headers, HDR_CONTENT_LENGTH, "%zu", response.content_length);
         
         if(!(response.received_headers & HDR_DATE)){
-            char date[64];
+            date_buf date;
             time_t dt = time(NULL);
             if(http_str_date(dt, date, sizeof(date)) == -1) log_fail_errno(warn, http_str_date);
             else th_writeheader(response.headers, HDR_DATE, "%s", date);
