@@ -13,7 +13,7 @@
 #include <locale.h>
 
 #ifndef DEBUG_LEVEL
-#define DEBUG_LEVEL DEBUG
+#define DEBUG_LEVEL INFO
 #endif
 
 #define PROXY_HTTP_VERSION HTTP_VERSION(1,0)
