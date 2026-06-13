@@ -36,6 +36,7 @@ typedef struct{
     headers_t received_headers;
     header_list* headers;
     size_t content_length;
+    time_t date;
     time_t expires;
     void* body;
     bool is_no_cache;
@@ -350,7 +351,11 @@ void th_handle_client_header(http_header header, char* value){
 
         case HDR_PRAGMA:
             th_writeheader(request.headers, header, "%s", value);
-            request.is_no_cache = (http_search_header_param(value, "no-cache") == 0);
+            request.is_no_cache |= (http_search_header_param(value, "no-cache") == 0);
+            break;
+
+        case HDR_AUTHORIZATION:
+            request.is_no_cache |= true;
             break;
 
         case HDR_USER_AGENT:
@@ -371,7 +376,7 @@ void th_handle_server_header(http_header header, char* value){
     switch(header){
         case HDR_DATE:{
             date_buf date;
-            if(http_reformat_date(value, NULL, date, sizeof(date)) == -1) return;
+            if(http_reformat_date(value, &response.date, date, sizeof(date)) == -1) return;
             th_writeheader(response.headers, header, "%s", date);
             break;
         }
@@ -394,7 +399,7 @@ void th_handle_server_header(http_header header, char* value){
 
         case HDR_PRAGMA:
             th_writeheader(response.headers, header, "%s", value);
-            response.is_no_cache = (http_search_header_param(value, "no-cache") == 0);
+            response.is_no_cache |= (http_search_header_param(value, "no-cache") == 0);
             break;
 
         default:
@@ -459,7 +464,7 @@ void th_try_get_cached_response(void){
         .uri = request.req_line->uri,
     };
 
-    int rc = cache_try_send_response(clientfd, &key);
+    int rc = cache_try_send_response(clientfd, &key, method);
     if(rc == 0){
         info("Successfully sent cached response to client fd=%d (%s:%s %s)", clientfd, key.hostname, key.port, key.uri);
         th_exit();
@@ -472,9 +477,7 @@ void th_try_get_cached_response(void){
 
 void th_try_cache_response(void){
     if(request.is_no_cache || response.is_no_cache) return;
-
-    http_method method = request.req_line->method;
-    if(method != HTTP_HEAD && method != HTTP_GET) return;
+    if(request.req_line->method != HTTP_GET) return;
     
     cache_key key = {
         .hostname = request.req_line->hostname,
@@ -492,6 +495,12 @@ void th_try_cache_response(void){
     };
 
     if(response.status_line->code == 200){
+        if(
+            !(response.received_headers & HDR_EXPIRES) ||
+            !(response.received_headers & HDR_DATE) ||
+            response.expires <= response.date
+        ) return;
+
         int rc = cache_store_response(&key, &cache_res);
         if(rc == 0){
             debug("Successfully stored response from (%s:%s %s)", key.hostname, key.port, key.uri);

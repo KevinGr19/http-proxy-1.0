@@ -25,6 +25,6 @@ typedef struct{
 } cache_key;
 
 void cache_init(void);
-int cache_try_send_response(int fd, cache_key* key);
+int cache_try_send_response(int fd, cache_key* key, http_method method);
 int cache_store_response(cache_key* key, cache_response* response);
 int cache_update_response_headers(cache_key* key, cache_response* response);

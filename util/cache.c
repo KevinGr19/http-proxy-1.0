@@ -20,7 +20,6 @@
 
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
-#define DEFAULT_EXPIRES_OFFSET 60*5
 
 #define HASHMAP_MIN_CAPACITY 17
 #define HASHMAP_LOAD_SHRINK 0.3
@@ -53,7 +52,7 @@ cache_entry *lru_entry, *mru_entry;
 pthread_rwlock_t rwlock;
 pthread_mutex_t rmutex;
 
-static int try_send_response(int fd, cache_key* key);
+static int try_send_response(int fd, cache_key* key, http_method method);
 static int store_response(cache_key* key, cache_response* response);
 static int update_response_headers(cache_key* key, cache_response* response);
 
@@ -91,9 +90,9 @@ void cache_init(void){
     }
 }
 
-int cache_try_send_response(int fd, cache_key* key){
+int cache_try_send_response(int fd, cache_key* key, http_method method){
     pthread_rwlock_rdlock(&rwlock);
-    int rc = try_send_response(fd, key);
+    int rc = try_send_response(fd, key, method);
     pthread_rwlock_unlock(&rwlock);
     return rc;
 }
@@ -112,7 +111,7 @@ int cache_update_response_headers(cache_key* key, cache_response* response){
     return rc;
 }
 
-static int try_send_response(int fd, cache_key* key){
+static int try_send_response(int fd, cache_key* key, http_method method){
     cache_entry* entry = hashmap_get_entry(key);
     if(!entry) return ECACHE_NOENTRY;
 
@@ -137,7 +136,10 @@ static int try_send_response(int fd, cache_key* key){
     rc = header_list_write_buf(&send_buf, entry->response.headers);
     if(rc == -1) goto ret;
 
-    rc = write_message(fd, send_buf.buf, send_buf.size, entry->response.body, entry->response.content_length);
+    if(method == HTTP_HEAD)
+        rc = write_message(fd, send_buf.buf, send_buf.size, NULL, 0);
+    else
+        rc = write_message(fd, send_buf.buf, send_buf.size, entry->response.body, entry->response.content_length);
 
     ret:
     heap_buf_free(&send_buf);
@@ -192,12 +194,6 @@ static int store_response(cache_key* key, cache_response* response){
     cache_size += response->content_length;
 
     debug_tr("Added cache entry (%s:%s %s)", key->hostname, key->port, key->uri);
-
-    if(!(entry->response.received_headers & HDR_EXPIRES)){
-        entry->response.expires = time(NULL) + DEFAULT_EXPIRES_OFFSET;
-        debug_tr("Setting default expires date to cache entry: expire in %zu seconds", DEFAULT_EXPIRES_OFFSET);
-    }
-
     debug_tr("Cache state: entries=%zu capacity=%zu cache_size=%zuB", map.size, map.capacity, cache_size);
     return 0;
 }
